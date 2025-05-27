@@ -65,11 +65,13 @@ PROXY: str = ''
 # 是否启用媒体信息获取
 MEDIA_INFO_ENABLED: bool = True
 # 媒体信息显示模式: 'prefix' - 作为前缀添加到当前窗口名称, 'standalone' - 使用独立设备
-MEDIA_INFO_MODE: str = 'prefix'
+MEDIA_INFO_MODE: str = 'standalone'
 # 独立设备模式下的设备ID (仅当 MEDIA_INFO_MODE = 'standalone' 时有效)
 MEDIA_DEVICE_ID: str = 'media-device'
 # 独立设备模式下的显示名称 (仅当 MEDIA_INFO_MODE = 'standalone' 时有效)
 MEDIA_DEVICE_SHOW_NAME: str = '正在播放'
+# 是否启用电源状态获取
+BATTERY_INFO_ENABLED: bool = True
 # --- config end
 
 # ----- Part: Functions
@@ -169,8 +171,40 @@ def get_media_info():
         debug(f"主要媒体信息获取方式失败: {primary_error}")
         return False, '', '', ''
 
-# ----- Part: Send status
+# 电池状态拎出来导入状态
+if BATTERY_INFO_ENABLED:
+    try:
+        import psutil
+        battery = psutil.sensors_battery()
+        if battery is None:
+            print("无法获取电池信息")
+            BATTERY_INFO_ENABLED = False
+    except Exception as e:
+        print(f"获取电池信息失败: {e}")
+        BATTERY_INFO_ENABLED = False
 
+def get_battery_info():
+    """
+    获取电池信息
+    Returns:
+        tuple: (电池百分比, 充电状态)
+    """
+    try:
+        # 电池信息变量
+        battery = psutil.sensors_battery()
+        if battery is None:
+            return 0, "未知"
+            
+        percent = battery.percent
+        power_plugged = battery.power_plugged
+        # 获取充电状态
+        status = "⚡正在充电" if power_plugged else "未在充电"
+        debug(f'--- 电量: `{percent}%`, 状态: {status}')
+        return percent, status
+    except Exception as e:
+        debug(f"获取电池信息失败: {e}")
+        return 0, "未知"
+# ----- Part: Send status
 
 Url = f'{SERVER}/device/set'
 last_window = ''
@@ -357,6 +391,12 @@ def do_update():
     window = current_window
     using = True
 
+    # 获取电池信息
+    if BATTERY_INFO_ENABLED:
+        battery_percent, battery_status = get_battery_info()
+        if battery_percent > 0:
+            window = f"[{battery_percent}% {battery_status}] {window}"
+    
     # 获取媒体信息
     prefix_media_info = None
     standalone_media_info = None
