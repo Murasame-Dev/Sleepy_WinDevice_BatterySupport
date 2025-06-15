@@ -2,7 +2,7 @@
 '''
 win_device.py
 在 Windows 上获取窗口名称
-by: @wyf9, @pwnint, @kmizmal, @gongfuture
+by: @wyf9, @pwnint, @kmizmal, @gongfuture, @LeiSureLyYrsc
 基础依赖: pywin32, httpx
 媒体信息依赖:
  - Python≤3.9: winrt
@@ -138,7 +138,7 @@ async def get_media_info():
         # 获取媒体会话管理器
         manager = await media.GlobalSystemMediaTransportControlsSessionManager.request_async()  # type: ignore
         session = manager.get_current_session()
-        
+
         if not session:
             return False, '', '', ''
 
@@ -156,6 +156,7 @@ async def get_media_info():
         if '未知唱片集' in album or '<' in album and '>' in album:
             album = ''
 
+        debug(f'[get_media_info] return: {is_playing}, {title}, {artist}, {album}')
         return is_playing, title, artist, album
 
     except Exception as primary_error:
@@ -174,6 +175,7 @@ if BATTERY_INFO_ENABLED:
         print(f"获取电池信息失败: {e}")
         BATTERY_INFO_ENABLED = False
 
+
 def get_battery_info():
     """
     获取电池信息
@@ -185,7 +187,7 @@ def get_battery_info():
         battery = psutil.sensors_battery()  # type: ignore
         if battery is None:
             return 0, "未知"
-            
+
         percent = battery.percent
         power_plugged = battery.power_plugged
         # 获取充电状态
@@ -197,11 +199,12 @@ def get_battery_info():
         return 0, "未知"
 # ----- Part: Send status
 
+
 Url = f'{SERVER}/device/set'
 last_window = ''
 
 
-async def send_status(using: bool = True, app_name: str = '', id: str = DEVICE_ID, show_name: str = DEVICE_SHOW_NAME, **kwargs):
+async def send_status(using: bool = True, app_name: str = '', id: str = DEVICE_ID, show_name: str = DEVICE_SHOW_NAME, timeout: float = 7.5, **kwargs):
     '''
     httpx.AsyncClient.post 发送设备状态信息
     设置了 headers 和 proxies
@@ -213,21 +216,16 @@ async def send_status(using: bool = True, app_name: str = '', id: str = DEVICE_I
         'using': using,
         'app_name': app_name
     }
-    
-    timeout = kwargs.pop('timeout', 10.0)
-    
+
     if PROXY:
-        proxies = {
-            'http://': PROXY,
-            'https://': PROXY
-        }
-        async with httpx.AsyncClient(proxies=proxies, timeout=timeout) as client:  # type: ignore
+        async with httpx.AsyncClient(proxy=PROXY, timeout=timeout) as client:  # type: ignore
             return await client.post(
                 url=Url,
                 json=json_data,
                 headers={
                     'Content-Type': 'application/json'
                 },
+                timeout=timeout,
                 **kwargs
             )
     else:
@@ -238,6 +236,7 @@ async def send_status(using: bool = True, app_name: str = '', id: str = DEVICE_I
                 headers={
                     'Content-Type': 'application/json'
                 },
+                timeout=timeout,
                 **kwargs
             )
 
@@ -339,8 +338,7 @@ def check_mouse_idle() -> bool:
 
     # 打印详细的鼠标状态信息（为了保持日志一致性，仍然显示计算后的距离）
     distance = distance_squared ** 0.5 if DEBUG else 0  # 仅在需要打印日志时计算
-    debug(
-        f'Mouse: current={current_pos}, last={last_mouse_pos}, distance={distance:.1f}px')
+    debug(f'Mouse: current={current_pos}, last={last_mouse_pos}, distance={distance:.1f}px')
 
     # 如果移动距离超过阈值（使用平方值比较）
     if distance_squared > threshold_squared:
@@ -348,11 +346,11 @@ def check_mouse_idle() -> bool:
         last_mouse_move_time = current_time
         if is_mouse_idle:
             is_mouse_idle = False
-        #     actual_distance = distance_squared ** 0.5  # 仅在状态变化时计算实际距离用于日志
-        #     print(
-        #         f'Mouse wake up: moved {actual_distance:.1f}px > {MOUSE_MOVE_THRESHOLD}px')
-        # else:
-        #     debug(f'Mouse moving: {distance:.1f}px > {MOUSE_MOVE_THRESHOLD}px')
+            actual_distance = distance_squared ** 0.5  # 仅在状态变化时计算实际距离用于日志
+            print(
+                f'Mouse wake up: moved {actual_distance:.1f}px > {MOUSE_MOVE_THRESHOLD}px')
+        else:
+            debug(f'Mouse moving: {distance:.1f}px > {MOUSE_MOVE_THRESHOLD}px')
         return False
 
     # 检查是否超过静止时间
@@ -397,7 +395,7 @@ async def do_update():
         battery_percent, battery_status = get_battery_info()
         if battery_percent > 0:
             window = f"[🔋{battery_percent}%{battery_status}] {window}"
-    
+
     # 获取媒体信息
     prefix_media_info = None
     standalone_media_info = None
@@ -422,7 +420,7 @@ async def do_update():
 
             standalone_media_info = " - ".join(parts) if parts else "♪播放中"
 
-            debug(f"检测到媒体 - title: {title or ''} - artist: {artist or ''} - album: {album or ''}")
+            debug(f"独立媒体信息: {standalone_media_info}")
 
     # 处理媒体信息 (prefix 模式)
     if MEDIA_INFO_ENABLED and prefix_media_info and MEDIA_INFO_MODE == 'prefix':
@@ -472,8 +470,7 @@ async def do_update():
                 window = last_window
 
         # 发送状态更新
-        print(
-            f'Sending update: using = {using}, app_name = "{window}", idle = {mouse_idle}')
+        print(f'Sending update: using = {using}, app_name = "{window}" (idle = {mouse_idle})')
         try:
             resp = await send_status(
                 using=using,
