@@ -3,7 +3,7 @@
 win_device.py
 在 Windows 上获取窗口名称
 by: @wyf9, @pwnint, @kmizmal, @gongfuture
-基础依赖: pywin32, requests
+基础依赖: pywin32, httpx
 媒体信息依赖:
  - Python≤3.9: winrt
  - Python≥3.10: winrt.windows.media.control, winrt.windows.foundation
@@ -17,7 +17,7 @@ import io
 from time import sleep
 import time  # 改用 time 模块以获取更精确的时间
 from datetime import datetime
-from requests import post
+import httpx
 import threading
 import win32api  # type: ignore - 勿删，用于强忽略非 windows 系统上 vscode 找不到模块的警告
 import win32con  # type: ignore
@@ -198,7 +198,7 @@ def get_battery_info():
         percent = battery.percent
         power_plugged = battery.power_plugged
         # 获取充电状态
-        status = "⚡正在充电" if power_plugged else "未在充电"
+        status = "⚡" if power_plugged else ""
         debug(f'--- 电量: `{percent}%`, 状态: {status}')
         return percent, status
     except Exception as e:
@@ -212,7 +212,7 @@ last_window = ''
 
 def send_status(using: bool = True, app_name: str = '', id: str = DEVICE_ID, show_name: str = DEVICE_SHOW_NAME, **kwargs):
     '''
-    post 发送设备状态信息
+    httpx.post 发送设备状态信息
     设置了 headers 和 proxies
     '''
     json_data = {
@@ -223,19 +223,20 @@ def send_status(using: bool = True, app_name: str = '', id: str = DEVICE_ID, sho
         'app_name': app_name
     }
     if PROXY:
-        return post(
+        return httpx.post(
             url=Url,
             json=json_data,
             headers={
                 'Content-Type': 'application/json'
             },
             proxies={
-                'all': PROXY
+                'http://': PROXY,
+                'https://': PROXY
             },
             **kwargs
         )
     else:
-        return post(
+        return httpx.post(
             url=Url,
             json=json_data,
             headers={
@@ -395,7 +396,7 @@ def do_update():
     if BATTERY_INFO_ENABLED:
         battery_percent, battery_status = get_battery_info()
         if battery_percent > 0:
-            window = f"[{battery_percent}% {battery_status}] {window}"
+            window = f"[🔋{battery_percent}%{battery_status}] {window}"
     
     # 获取媒体信息
     prefix_media_info = None
